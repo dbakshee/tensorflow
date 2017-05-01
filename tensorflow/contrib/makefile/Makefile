@@ -420,10 +420,12 @@ ifeq ($(TARGET),IOS)
 	DEPDIR := $(DEPDIR)ios_$(IOS_ARCH)/
 endif
 
-# This library is the main target for this makefile. It will contain a minimal
+# These static libraries are the main targets for this makefile. They contain a minimal
 # runtime that can be linked in to other programs.
+# Link $(LIB_PATH) as whole-archive and $(LIB_PATH-an) normally, as-needed.
 LIB_NAME := libtensorflow-core.a
 LIB_PATH := $(LIBDIR)$(LIB_NAME)
+LIB_PATH-an := $(LIB_PATH:.a=-an.a)
 
 # A small example program that shows how to link against the library.
 BENCHMARK_NAME := $(BINDIR)benchmark
@@ -508,7 +510,7 @@ BENCHMARK_OBJS := $(addprefix $(OBJDIR), $(BENCHMARK_SRCS:.cc=.o))
 .PHONY: clean cleantarget
 
 # The target that's compiled if there's no command-line arguments.
-all: $(LIB_PATH) $(BENCHMARK_NAME)
+all: $(LIB_PATH) $(LIB_PATH-an) $(BENCHMARK_NAME)
 
 # Rules for target compilation.
 
@@ -517,16 +519,27 @@ all: $(LIB_PATH) $(BENCHMARK_NAME)
 tensorflow/core/util/version_info.cc: .phony_version_info
 	tensorflow/tools/git/gen_git_source.sh $@
 
+# Assign objects to whole-archive (.a) and as-needed archive (-an.a)
+filter-mn = $(foreach v,$1,$(call filter-1n,$v,$2))
+filter-1n = $(foreach v,$2,$(if $(findstring $1,$v),$v))
+an-patterns = .pb.o .pb_text.o debug $(USER_AN_PATTERNS)
+LIB_OBJS-an  := $(sort $(call filter-mn,$(an-patterns),$(LIB_OBJS)))
+LIB_OBJS     := $(sort $(filter-out $(LIB_OBJS-an),$(LIB_OBJS)))
+
 # Gathers together all the objects we've compiled into a single '.a' archive.
 $(LIB_PATH): $(LIB_OBJS)
 	@mkdir -p $(dir $@)
 	$(AR) $(ARFLAGS) $(LIB_PATH) $(LIB_OBJS)
 
-$(BENCHMARK_NAME): $(BENCHMARK_OBJS) $(LIB_PATH)
+$(LIB_PATH-an): $(LIB_OBJS-an)
+	@mkdir -p $(dir $@)
+	$(AR) $(ARFLAGS) $(LIB_PATH-an) $(LIB_OBJS-an)
+
+$(BENCHMARK_NAME): $(BENCHMARK_OBJS) $(LIB_PATH) $(LIB_PATH-an)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) \
 	-o $(BENCHMARK_NAME) $(BENCHMARK_OBJS) \
-	$(LIBFLAGS) $(LIB_PATH) $(LDFLAGS) $(LIBS)
+	$(LIBFLAGS) $(LIB_PATH) $(LDFLAGS) $(LIB_PATH-an) $(LIBS)
 
 # Matches on the normal hand-written TensorFlow C++ source files.
 $(OBJDIR)%.o: %.cc | $(PBT_GEN_FILES)

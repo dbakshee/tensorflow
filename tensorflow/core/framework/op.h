@@ -239,8 +239,10 @@ class OpDefBuilderWrapper<true> {
     builder_.Deprecated(version, explanation);
     return *this;
   }
-  OpDefBuilderWrapper<true>& Doc(StringPiece text) {
+  OpDefBuilderWrapper<true>& Doc(const char *text) {
+#ifndef TF_LEAN_BINARY
     builder_.Doc(text);
+#endif
     return *this;
   }
   OpDefBuilderWrapper<true>& SetShapeFn(
@@ -267,7 +269,7 @@ class OpDefBuilderWrapper<false> {
   OpDefBuilderWrapper<false>& SetIsStateful() { return *this; }
   OpDefBuilderWrapper<false>& SetAllowsUninitializedInput() { return *this; }
   OpDefBuilderWrapper<false>& Deprecated(int, StringPiece) { return *this; }
-  OpDefBuilderWrapper<false>& Doc(StringPiece text) { return *this; }
+  OpDefBuilderWrapper<false>& Doc(const char *text) { return *this; }
   OpDefBuilderWrapper<false>& SetShapeFn(
       Status (*fn)(shape_inference::InferenceContext*)) {
     return *this;

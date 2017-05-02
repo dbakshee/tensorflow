@@ -263,6 +263,7 @@ ifeq ($(TARGET),ANDROID)
 	LD := $(NDK_ROOT)/toolchains/arm-linux-androideabi-4.9/prebuilt/$(OS_PATH)-x86_64/arm-linux-androideabi/bin/ld
 
 	LDFLAGS := \
+-Wl,--no-whole-archive \
 -march=armv7-a \
 -L$(MAKEFILE_DIR)/gen/protobuf/lib \
 -L$(NDK_ROOT)/sources/cxx-stl/gnu-libstdc++/4.9/libs/armeabi-v7a \

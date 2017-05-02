@@ -254,8 +254,8 @@ ifeq ($(TARGET),ANDROID)
 -I$(PBTGENDIR)
 
 	LIBS := \
--lgnustl_static \
 -lprotobuf \
+-lgnustl_static \
 -llog \
 -lz \
 -lm

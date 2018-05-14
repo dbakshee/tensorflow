@@ -13,7 +13,12 @@
 # limitations under the License.
 # ==============================================================================
 
-"""TensorFlow estimators for Linear and DNN joined training models."""
+"""TensorFlow estimators for Linear and DNN joined training models (deprecated).
+
+This module and all its submodules are deprecated. See
+[contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+for migration instructions.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -33,6 +38,7 @@ from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
 from tensorflow.contrib.learn.python.learn.estimators import model_fn
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 from tensorflow.contrib.learn.python.learn.utils import export
+from tensorflow.python.feature_column import feature_column as fc_core
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import nn
@@ -230,11 +236,20 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
           "input_from_feature_columns",
           values=tuple(six.itervalues(features)),
           partitioner=input_layer_partitioner) as dnn_input_scope:
-        net = layers.input_from_feature_columns(
-            columns_to_tensors=features,
-            feature_columns=dnn_feature_columns,
-            weight_collections=[dnn_parent_scope],
-            scope=dnn_input_scope)
+        if all([
+            isinstance(fc, feature_column_lib._FeatureColumn)  # pylint: disable=protected-access
+            for fc in dnn_feature_columns
+        ]):
+          net = layers.input_from_feature_columns(
+              columns_to_tensors=features,
+              feature_columns=dnn_feature_columns,
+              weight_collections=[dnn_parent_scope],
+              scope=dnn_input_scope)
+        else:
+          net = fc_core.input_layer(
+              features=features,
+              feature_columns=dnn_feature_columns,
+              weight_collections=[dnn_parent_scope])
 
       for layer_id, num_hidden_units in enumerate(dnn_hidden_units):
         with variable_scope.variable_scope(
@@ -277,20 +292,29 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
         linear_parent_scope,
         values=tuple(six.itervalues(features)),
         partitioner=linear_partitioner) as scope:
-      if joint_linear_weights:
-        linear_logits, _, _ = layers.joint_weighted_sum_from_feature_columns(
-            columns_to_tensors=features,
-            feature_columns=linear_feature_columns,
-            num_outputs=head.logits_dimension,
-            weight_collections=[linear_parent_scope],
-            scope=scope)
+      if all([isinstance(fc, feature_column_lib._FeatureColumn)  # pylint: disable=protected-access
+              for fc in linear_feature_columns]):
+        if joint_linear_weights:
+          linear_logits, _, _ = layers.joint_weighted_sum_from_feature_columns(
+              columns_to_tensors=features,
+              feature_columns=linear_feature_columns,
+              num_outputs=head.logits_dimension,
+              weight_collections=[linear_parent_scope],
+              scope=scope)
+        else:
+          linear_logits, _, _ = layers.weighted_sum_from_feature_columns(
+              columns_to_tensors=features,
+              feature_columns=linear_feature_columns,
+              num_outputs=head.logits_dimension,
+              weight_collections=[linear_parent_scope],
+              scope=scope)
       else:
-        linear_logits, _, _ = layers.weighted_sum_from_feature_columns(
-            columns_to_tensors=features,
+        linear_logits = fc_core.linear_model(
+            features=features,
             feature_columns=linear_feature_columns,
-            num_outputs=head.logits_dimension,
-            weight_collections=[linear_parent_scope],
-            scope=scope)
+            units=head.logits_dimension,
+            weight_collections=[linear_parent_scope])
+
       _add_layer_summary(linear_logits, scope.name)
 
   # Combine logits and build full model.
@@ -352,6 +376,10 @@ def _dnn_linear_combined_model_fn(features, labels, mode, params, config=None):
 
 class DNNLinearCombinedEstimator(estimator.Estimator):
   """An estimator for TensorFlow Linear and DNN joined training models.
+
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
 
   Note: New users must set `fix_global_step_increment_bug=True` when creating an
   estimator.
@@ -470,6 +498,10 @@ class DNNLinearCombinedEstimator(estimator.Estimator):
 
 class DNNLinearCombinedClassifier(estimator.Estimator):
   """A classifier for TensorFlow Linear and DNN joined training models.
+
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
 
   Note: New users must set `fix_global_step_increment_bug=True` when creating an
   estimator.
@@ -812,6 +844,10 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
 
 class DNNLinearCombinedRegressor(estimator.Estimator):
   """A regressor for TensorFlow Linear and DNN joined training models.
+
+  THIS CLASS IS DEPRECATED. See
+  [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
+  for general migration instructions.
 
   Note: New users must set `fix_global_step_increment_bug=True` when creating an
   estimator.

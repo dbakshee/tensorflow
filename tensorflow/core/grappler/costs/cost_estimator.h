@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_COSTS_COST_ESTIMATOR_H_
-#define TENSORFLOW_GRAPPLER_COSTS_COST_ESTIMATOR_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_COSTS_COST_ESTIMATOR_H_
+#define TENSORFLOW_CORE_GRAPPLER_COSTS_COST_ESTIMATOR_H_
 
 #include <chrono>
+#include <unordered_map>
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
@@ -39,27 +40,46 @@ struct Costs {
   // Builds a Costs structure with all zero values, rather than unknowns.
   static inline Costs ZeroCosts();
 
+  struct MilliSeconds : std::chrono::milliseconds {
+    MilliSeconds() : std::chrono::milliseconds(0) {}
+    MilliSeconds(double d) : std::chrono::milliseconds(static_cast<int64>(d)) {}
+    MilliSeconds(const std::chrono::milliseconds& d)
+        : std::chrono::milliseconds(d) {}
+    MilliSeconds& operator=(const std::chrono::milliseconds& d) {
+      std::chrono::milliseconds::operator=(d);
+      return *this;
+    }
+  };
   struct MicroSeconds : std::chrono::microseconds {
     MicroSeconds() : std::chrono::microseconds(0) {}
     MicroSeconds(double d) : std::chrono::microseconds(static_cast<int64>(d)) {}
-    MicroSeconds(std::chrono::microseconds& d) : std::chrono::microseconds(d) {}
+    MicroSeconds(const std::chrono::microseconds& d)
+        : std::chrono::microseconds(d) {}
     MicroSeconds& operator=(const std::chrono::microseconds& d) {
       std::chrono::microseconds::operator=(d);
       return *this;
+    }
+    MilliSeconds asMilliSeconds() const {
+      return std::chrono::duration_cast<std::chrono::milliseconds>(*this);
     }
   };
   struct NanoSeconds : std::chrono::nanoseconds {
     NanoSeconds() : std::chrono::nanoseconds(0) {}
     NanoSeconds(double d) : std::chrono::nanoseconds(static_cast<int64>(d)) {}
-    NanoSeconds(std::chrono::nanoseconds& d) : std::chrono::nanoseconds(d) {}
+    NanoSeconds(const std::chrono::nanoseconds& d)
+        : std::chrono::nanoseconds(d) {}
     NanoSeconds& operator=(const std::chrono::nanoseconds& d) {
       std::chrono::nanoseconds::operator=(d);
       return *this;
     }
     MicroSeconds asMicroSeconds() const {
-      std::chrono::microseconds us =
-          std::chrono::duration_cast<std::chrono::microseconds>(*this);
-      return MicroSeconds(us);
+      return std::chrono::duration_cast<std::chrono::microseconds>(*this);
+    }
+    MilliSeconds asMilliSeconds() const {
+      return std::chrono::duration_cast<std::chrono::milliseconds>(*this);
+    }
+    static NanoSeconds infinity() {
+      return NanoSeconds(std::chrono::nanoseconds::max());
     }
   };
 
@@ -68,10 +88,7 @@ struct Costs {
   typedef NanoSeconds Duration;
 
   // Overall cost of running the graph; latency.
-  // Mean
   Duration execution_time;
-  Duration min_execution_time;
-  Duration max_execution_time;
 
   // Computation cost of running the graph.
   Duration compute_time;
@@ -83,6 +100,8 @@ struct Costs {
   // requirements of a graph. For example, it might assume that all activations
   // are live for all of a graph's execution.
   int64 max_memory;  // Maximum main memory requirement in bytes over all ops.
+  int64 persistent_memory;
+  int64 temporary_memory;
 
   // These fields are used for TPU-related estimations. They are per-op
   // maximums, so each op is evaluated independently, but we want the maximum of
@@ -92,8 +111,15 @@ struct Costs {
                                // streams from main memory.
   // If the time estimation is inaccurate.
   bool inaccurate = false;
+
+  // Max possible memory usage per device.
+  std::unordered_map<string, uint64> estimated_max_memory_per_device;
 };
 
+inline std::ostream& operator<<(std::ostream& os, const Costs::MilliSeconds d) {
+  os << d.count() << "ms";
+  return os;
+}
 inline std::ostream& operator<<(std::ostream& os, const Costs::MicroSeconds d) {
   os << d.count() << "us";
   return os;
@@ -108,6 +134,8 @@ Costs::Costs() {
   compute_time = Duration::zero();
   memory_time = Duration::zero();
   max_memory = kMemoryUnknown;
+  persistent_memory = kMemoryUnknown;
+  temporary_memory = kMemoryUnknown;
   max_per_op_buffers = kMemoryUnknown;
   max_per_op_streaming = kMemoryUnknown;
 }
@@ -115,7 +143,11 @@ Costs::Costs() {
 Costs Costs::ZeroCosts() {
   Costs costs;
   costs.execution_time = Duration::zero();
+  costs.compute_time = Duration::zero();
+  costs.memory_time = Duration::zero();
   costs.max_memory = kZeroMemory;
+  costs.persistent_memory = kZeroMemory;
+  costs.temporary_memory = kZeroMemory;
   costs.max_per_op_buffers = kZeroMemory;
   costs.max_per_op_streaming = kZeroMemory;
   return costs;
@@ -128,7 +160,7 @@ class CostEstimator {
  public:
   virtual ~CostEstimator() {}
 
-  // Initalizes the estimator for the specified grappler item.
+  // Initializes the estimator for the specified grappler item.
   // The estimator shouldn't be used if this function returns any status other
   // that OK.
   virtual Status Initialize(const GrapplerItem& item) = 0;
@@ -148,4 +180,4 @@ class CostEstimator {
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_COSTS_COST_ESTIMATOR_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_COSTS_COST_ESTIMATOR_H_

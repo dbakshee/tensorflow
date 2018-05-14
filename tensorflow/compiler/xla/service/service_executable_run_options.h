@@ -28,34 +28,44 @@ namespace xla {
 class ServiceExecutableRunOptions {
  public:
   using StreamBorrower =
-      std::function<StatusOr<Pool<perftools::gputools::Stream>::SmartPtr>(int)>;
+      std::function<StatusOr<Pool<se::Stream>::SmartPtr>(int)>;
 
-  explicit ServiceExecutableRunOptions(ExecutableRunOptions run_options,
-                                       StreamBorrower borrow_stream = nullptr)
+  ServiceExecutableRunOptions()
+      : ServiceExecutableRunOptions(ExecutableRunOptions()) {}
+
+  explicit ServiceExecutableRunOptions(
+      ExecutableRunOptions run_options, StreamBorrower borrow_stream = nullptr,
+      tensorflow::thread::ThreadPool* xla_intra_op_thread_pool = nullptr)
       : run_options_(std::move(run_options)),
-        borrow_stream_(std::move(borrow_stream)) {}
+        borrow_stream_(std::move(borrow_stream)),
+        xla_intra_op_thread_pool_(xla_intra_op_thread_pool) {}
 
   // Returns reference or pointer to `ExecutableRunOptions` member.
   const ExecutableRunOptions& run_options() const { return run_options_; }
   ExecutableRunOptions* mutable_run_options() { return &run_options_; }
 
   // Delegate to `ExecutableRunOptions` member.
-  perftools::gputools::Stream* stream() const { return run_options_.stream(); }
+  se::Stream* stream() const { return run_options_.stream(); }
   DeviceMemoryAllocator* allocator() const { return run_options_.allocator(); }
   int device_ordinal() const { return run_options_.device_ordinal(); }
 
   // Borrows a stream and returns a smart pointer which returns the stream on
   // destruction.
-  StatusOr<Pool<perftools::gputools::Stream>::SmartPtr> BorrowStream(
-      int device_ordinal) const {
+  StatusOr<Pool<se::Stream>::SmartPtr> BorrowStream(int device_ordinal) const {
     return borrow_stream_
                ? borrow_stream_(device_ordinal)
                : Status(tensorflow::error::UNIMPLEMENTED, "No stream cache");
   }
 
+  // Returns reference to thread pool for execution of XLA ops on CPU backend.
+  tensorflow::thread::ThreadPool* xla_intra_op_thread_pool() const {
+    return xla_intra_op_thread_pool_;
+  }
+
  private:
   ExecutableRunOptions run_options_;
   StreamBorrower borrow_stream_;
+  tensorflow::thread::ThreadPool* xla_intra_op_thread_pool_;
 };
 
 }  // namespace xla

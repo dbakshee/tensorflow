@@ -321,7 +321,7 @@ TEST(FlatMap, Copy) {
     NumMap copy2;
     copy2 = src;
     EXPECT_EQ(Contents(src), Contents(copy2));
-    copy2 = copy2;  // Self-assignment
+    copy2 = *&copy2;  // Self-assignment, avoiding -Wself-assign.
     EXPECT_EQ(Contents(src), Contents(copy2));
   }
 }
@@ -588,7 +588,7 @@ TEST(FlatMap, ForwardIterator) {
 // or destructions will show up as errors under a sanitizer or
 // heap checker.
 TEST(FlatMap, ConstructDestruct) {
-  FlatMap<string, string, HashStr> map;
+  FlatMap<string, string> map;
   string k1 = "the quick brown fox jumped over the lazy dog";
   string k2 = k1 + k1;
   string k3 = k1 + k2;

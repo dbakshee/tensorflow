@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPPLER_COSTS_MEASURING_COST_ESTIMATOR_H_
-#define TENSORFLOW_GRAPPLER_COSTS_MEASURING_COST_ESTIMATOR_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_COSTS_MEASURING_COST_ESTIMATOR_H_
+#define TENSORFLOW_CORE_GRAPPLER_COSTS_MEASURING_COST_ESTIMATOR_H_
 
 #include <string>
 #include <utility>
@@ -50,7 +50,7 @@ class MeasuringCostEstimator : public CostEstimator {
                                   int measurement_threads);
   ~MeasuringCostEstimator() override {}
 
-  // Initalizes the estimator for the specified grappler item.
+  // Initializes the estimator for the specified grappler item.
   // This implementation always returns OK.
   Status Initialize(const GrapplerItem& item) override;
 
@@ -73,4 +73,4 @@ class MeasuringCostEstimator : public CostEstimator {
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPPLER_COSTS_MEASURING_COST_ESTIMATOR_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_COSTS_MEASURING_COST_ESTIMATOR_H_

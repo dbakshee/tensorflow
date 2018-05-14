@@ -31,10 +31,10 @@ from tensorflow.python.platform import googletest
 
 
 def _inner_product(x, y):
-  """Inner product between tensors x and y.
+  r"""Inner product between tensors x and y.
 
   The input tensors are assumed to be in ROW representation, that is, the method
-  returns x * y^T.
+  returns \\(x * y^T\\).
 
   Args:
     x: input tensor in row format
@@ -85,7 +85,7 @@ class RandomFourierFeatureMapperTest(TensorFlowTestCase):
       mapped_x = rffm.map(x)
       mapped_x_copy = rffm.map(x)
       # Two different evaluations of tensors output by map on the same input
-      # are identical because the same paramaters are used for the mappings.
+      # are identical because the same parameters are used for the mappings.
       self.assertAllClose(mapped_x.eval(), mapped_x_copy.eval(), atol=0.001)
 
   def testTwoMapperObjects(self):
@@ -131,10 +131,6 @@ class RandomFourierFeatureMapperTest(TensorFlowTestCase):
     mapped_dim = 5000
     stddev = 5.0
 
-    # TODO(sibyl-vie3Poto): Reduce test's running time before moving to third_party. One
-    # possible way to speed the test up is to compute both the approximate and
-    # the exact kernel matrix directly using matrix operations instead of
-    # computing the values for each pair of points separately.
     points_shape = [1, input_dim]
     points = [
         random_ops.random_uniform(shape=points_shape, maxval=1.0)

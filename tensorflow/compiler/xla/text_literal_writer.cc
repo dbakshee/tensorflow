@@ -33,7 +33,7 @@ namespace xla {
 /* static */ tensorflow::Status TextLiteralWriter::WriteToPath(
     const Literal& literal, tensorflow::StringPiece path) {
   std::unique_ptr<tensorflow::WritableFile> f;
-  auto s = tensorflow::Env::Default()->NewWritableFile(path.ToString(), &f);
+  auto s = tensorflow::Env::Default()->NewWritableFile(std::string(path), &f);
   if (!s.ok()) {
     return s;
   }
@@ -45,9 +45,9 @@ namespace xla {
 
   tensorflow::Status status;
   tensorflow::WritableFile* f_ptr = f.get();
-  LiteralUtil::EachCellAsString(
-      literal, [f_ptr, &status](tensorflow::gtl::ArraySlice<int64> indices,
-                                const string& value) {
+  literal.EachCellAsString(
+      [f_ptr, &status](tensorflow::gtl::ArraySlice<int64> indices,
+                       const string& value) {
         if (!status.ok()) {
           return;
         }

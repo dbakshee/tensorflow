@@ -15,17 +15,18 @@ limitations under the License.
 
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -61,8 +62,12 @@ class CropAndResizeOpTest : public OpsTestBase {
 
 REGISTER_TEST(float)
 REGISTER_TEST(double)
-REGISTER_TEST(int8)
 REGISTER_TEST(uint8)
+REGISTER_TEST(uint16)
+REGISTER_TEST(int8)
+REGISTER_TEST(int16)
+REGISTER_TEST(int32)
+REGISTER_TEST(int64)
 
 #undef REGISTER_TEST
 
@@ -238,7 +243,7 @@ TEST_F(CropAndResizeOpTest, TestInvalidInputShape) {
   AddInputFromArray<int32>(TensorShape({2}), {4, 4});
   Status s = RunOpKernel();
   ASSERT_FALSE(s.ok());
-  EXPECT_TRUE(StringPiece(s.ToString()).contains("input image must be 4-D"))
+  EXPECT_TRUE(str_util::StrContains(s.ToString(), "input image must be 4-D"))
       << s;
 }
 
@@ -251,7 +256,7 @@ TEST_F(CropAndResizeOpTest, TestInvalidBoxIndexShape) {
   Status s = RunOpKernel();
   ASSERT_FALSE(s.ok());
   EXPECT_TRUE(
-      StringPiece(s.ToString()).contains("box_index has incompatible shape"))
+      str_util::StrContains(s.ToString(), "box_index has incompatible shape"))
       << s;
 }
 
@@ -263,11 +268,53 @@ TEST_F(CropAndResizeOpTest, TestInvalidBoxIndex) {
   AddInputFromArray<int32>(TensorShape({2}), {3, 3});
   Status s = RunOpKernel();
   ASSERT_FALSE(s.ok());
-  EXPECT_TRUE(StringPiece(s.ToString())
-                  .contains("box_index has values outside [0, batch_size)"))
+  EXPECT_TRUE(str_util::StrContains(
+      s.ToString(), "box_index has values outside [0, batch_size)"))
       << s;
 }
 
-// TODO(zhengxq, rmlarsen): Add a benchmark.
+TEST_F(CropAndResizeOpTest, TestWithSharding) {
+  MakeOp<float>(0);
+  // Generate a relatively large input (999x999) so that sharding happens.
+  const int kLength = 999;  // Length of the input. Must use an odd number.
+  const int kHalf = (kLength + 1) / 2;  // Half size for the cropped result.
+
+  // Input:
+  //  0, 1, 2, ..., 998
+  //  0, 1, 2, ..., 998
+  //  ... (altogether 999 lines)
+  //  0, 1, 2, ..., 998
+  AddInput<float>(TensorShape({1, kLength, kLength, 1}),
+                  [kLength](int i) -> float { return i % kLength; });
+  AddInputFromArray<float>(TensorShape({2, 4}),
+                           {0, 0, 0.5, 0.5, 0.5, 0.5, 1, 1});
+  AddInputFromArray<int32>(TensorShape({2}), {0, 0});
+  AddInputFromArray<int32>(TensorShape({2}), {kHalf, kHalf});
+
+  TF_ASSERT_OK(RunOpKernel());
+
+  // Generate result tensor.
+  // Result 1:
+  //  0, 1, 2, ..., 499
+  //  ... (altogether 500 lines)
+  //  0, 1, 2, ..., 499
+  Tensor result1(allocator(), DT_FLOAT, TensorShape({1, kHalf, kHalf, 1}));
+  test::FillFn<float>(&result1, [kHalf](int i) -> float { return i % kHalf; });
+
+  // Result 2:
+  //  499, 500, 501, ..., 998
+  //  ... (altogether 500 lines)
+  //  499, 500, 501, ..., 998
+  Tensor result2(allocator(), DT_FLOAT, TensorShape({1, kHalf, kHalf, 1}));
+  test::FillFn<float>(
+      &result2, [kHalf](int i) -> float { return i % kHalf + kHalf - 1; });
+
+  // Expected result is the concat of the two tensors.
+  Tensor expected(allocator(), DT_FLOAT, TensorShape({2, kHalf, kHalf, 1}));
+  TF_ASSERT_OK(tensor::Concat({result1, result2}, &expected));
+
+  // Compare result.
+  test::ExpectTensorEqual<float>(expected, *GetOutput(0));
+}
 
 }  // namespace tensorflow

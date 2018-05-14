@@ -36,8 +36,8 @@ _DTYPES = set(
 class ImageOpsTest(test_util.TensorFlowTestCase):
 
   def test_zeros(self):
-    with self.test_session():
-      for dtype in _DTYPES:
+    for dtype in _DTYPES:
+      with self.test_session():
         for shape in [(5, 5), (24, 24), (2, 24, 24, 3)]:
           for angle in [0, 1, np.pi / 2.0]:
             image = array_ops.zeros(shape, dtype)
@@ -46,8 +46,8 @@ class ImageOpsTest(test_util.TensorFlowTestCase):
                 np.zeros(shape, dtype.as_numpy_dtype()))
 
   def test_rotate_even(self):
-    with self.test_session():
-      for dtype in _DTYPES:
+    for dtype in _DTYPES:
+      with self.test_session():
         image = array_ops.reshape(
             math_ops.cast(math_ops.range(36), dtype), (6, 6))
         image_rep = array_ops.tile(image[None, :, :, None], [3, 1, 1, 1])
@@ -68,8 +68,8 @@ class ImageOpsTest(test_util.TensorFlowTestCase):
                               [1, 7, 13, 19, 25, 31], [0, 6, 12, 18, 24, 30]]])
 
   def test_rotate_odd(self):
-    with self.test_session():
-      for dtype in _DTYPES:
+    for dtype in _DTYPES:
+      with self.test_session():
         image = array_ops.reshape(
             math_ops.cast(math_ops.range(25), dtype), (5, 5))
         image_rep = array_ops.tile(image[None, :, :, None], [3, 1, 1, 1])
@@ -87,9 +87,25 @@ class ImageOpsTest(test_util.TensorFlowTestCase):
                               [22, 17, 12, 7, 2], [23, 18, 13, 8, 3],
                               [24, 19, 14, 9, 4]]])
 
+  def test_translate(self):
+    for dtype in _DTYPES:
+      with self.test_session():
+        image = constant_op.constant(
+            [[1, 0, 1, 0],
+             [0, 1, 0, 1],
+             [1, 0, 1, 0],
+             [0, 1, 0, 1]], dtype=dtype)
+        translation = constant_op.constant([-1, -1], dtypes.float32)
+        image_translated = image_ops.translate(image, translation)
+        self.assertAllEqual(image_translated.eval(),
+                            [[1, 0, 1, 0],
+                             [0, 1, 0, 0],
+                             [1, 0, 1, 0],
+                             [0, 0, 0, 0]])
+
   def test_compose(self):
-    with self.test_session():
-      for dtype in _DTYPES:
+    for dtype in _DTYPES:
+      with self.test_session():
         image = constant_op.constant(
             [[1, 1, 1, 0],
              [1, 0, 0, 0],
@@ -183,6 +199,65 @@ class ImageOpsTest(test_util.TensorFlowTestCase):
     self._test_grad([16, 16])
     self._test_grad([4, 12, 12])
     self._test_grad([3, 4, 12, 12])
+
+
+class BipartiteMatchTest(test_util.TensorFlowTestCase):
+
+  def _BipartiteMatchTest(self, distance_mat, distance_mat_shape,
+                          num_valid_rows,
+                          expected_row_to_col_match,
+                          expected_col_to_row_match):
+    distance_mat_np = np.array(distance_mat, dtype=np.float32).reshape(
+        distance_mat_shape)
+    expected_row_to_col_match_np = np.array(expected_row_to_col_match,
+                                            dtype=np.int32)
+    expected_col_to_row_match_np = np.array(expected_col_to_row_match,
+                                            dtype=np.int32)
+
+    with self.test_session():
+      distance_mat_tf = constant_op.constant(distance_mat_np,
+                                             shape=distance_mat_shape)
+      location_to_prior, prior_to_location = image_ops.bipartite_match(
+          distance_mat_tf, num_valid_rows)
+      location_to_prior_np = location_to_prior.eval()
+      prior_to_location_np = prior_to_location.eval()
+      self.assertAllEqual(location_to_prior_np, expected_row_to_col_match_np)
+      self.assertAllEqual(prior_to_location_np, expected_col_to_row_match_np)
+
+  def testBipartiteMatch(self):
+    distance_mat = [0.5, 0.8, 0.1,
+                    0.3, 0.2, 0.15]
+    num_valid_rows = 2
+    expected_row_to_col_match = [2, 1]
+    expected_col_to_row_match = [-1, 1, 0]
+    self._BipartiteMatchTest(distance_mat, [2, 3], num_valid_rows,
+                             expected_row_to_col_match,
+                             expected_col_to_row_match)
+
+    # The case of num_valid_rows less than num-of-rows-in-distance-mat.
+    num_valid_rows = 1
+    expected_row_to_col_match = [2, -1]
+    expected_col_to_row_match = [-1, -1, 0]
+    self._BipartiteMatchTest(distance_mat, [2, 3], num_valid_rows,
+                             expected_row_to_col_match,
+                             expected_col_to_row_match)
+
+    # The case of num_valid_rows being 0.
+    num_valid_rows = 0
+    expected_row_to_col_match = [-1, -1]
+    expected_col_to_row_match = [-1, -1, -1]
+    self._BipartiteMatchTest(distance_mat, [2, 3], num_valid_rows,
+                             expected_row_to_col_match,
+                             expected_col_to_row_match)
+
+    # The case of num_valid_rows less being -1.
+    num_valid_rows = -1
+    # The expected results are the same as num_valid_rows being 2.
+    expected_row_to_col_match = [2, 1]
+    expected_col_to_row_match = [-1, 1, 0]
+    self._BipartiteMatchTest(distance_mat, [2, 3], num_valid_rows,
+                             expected_row_to_col_match,
+                             expected_col_to_row_match)
 
 
 if __name__ == "__main__":

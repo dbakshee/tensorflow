@@ -22,11 +22,13 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/op_segment.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test_benchmark.h"
@@ -38,8 +40,10 @@ limitations under the License.
 namespace tensorflow {
 namespace test {
 
+// TODO(hongm): Convert `g` and `init` to using std::unique_ptr.
 Benchmark::Benchmark(const string& device, Graph* g,
-                     const SessionOptions* options, Graph* init) {
+                     const SessionOptions* options, Graph* init,
+                     Rendezvous* rendez) {
   SessionOptions default_options;
   if (!options) {
     options = &default_options;
@@ -61,7 +65,11 @@ Benchmark::Benchmark(const string& device, Graph* g,
     pool_->Schedule(closure);
   };
 
-  rendez_ = NewLocalRendezvous();
+  if (rendez == nullptr) {
+    rendez_ = NewLocalRendezvous();
+  } else {
+    rendez_ = rendez;
+  }
 
   const int graph_def_version = g->versions().producer();
 
@@ -79,7 +87,8 @@ Benchmark::Benchmark(const string& device, Graph* g,
 
   if (init) {
     Executor* init_exec;
-    TF_CHECK_OK(NewLocalExecutor(params, init, &init_exec));
+    TF_CHECK_OK(
+        NewLocalExecutor(params, std::unique_ptr<Graph>(init), &init_exec));
     Executor::Args args;
     args.rendezvous = rendez_;
     args.runner = runner;
@@ -87,7 +96,7 @@ Benchmark::Benchmark(const string& device, Graph* g,
     delete init_exec;
   }
 
-  TF_CHECK_OK(NewLocalExecutor(params, g, &exec_));
+  TF_CHECK_OK(NewLocalExecutor(params, std::unique_ptr<Graph>(g), &exec_));
 }
 
 Benchmark::~Benchmark() {
@@ -103,13 +112,13 @@ void Benchmark::Run(int iters) { RunWithArgs({}, {}, iters); }
 
 string GetRendezvousKey(const Node* node) {
   string send_device;
-  TF_CHECK_OK(GetNodeAttr(node->def(), "send_device", &send_device));
+  TF_CHECK_OK(GetNodeAttr(node->attrs(), "send_device", &send_device));
   string recv_device;
-  TF_CHECK_OK(GetNodeAttr(node->def(), "recv_device", &recv_device));
+  TF_CHECK_OK(GetNodeAttr(node->attrs(), "recv_device", &recv_device));
   string tensor_name;
-  TF_CHECK_OK(GetNodeAttr(node->def(), "tensor_name", &tensor_name));
+  TF_CHECK_OK(GetNodeAttr(node->attrs(), "tensor_name", &tensor_name));
   uint64 send_device_incarnation;
-  TF_CHECK_OK(GetNodeAttr(node->def(), "send_device_incarnation",
+  TF_CHECK_OK(GetNodeAttr(node->attrs(), "send_device_incarnation",
                           reinterpret_cast<int64*>(&send_device_incarnation)));
   return Rendezvous::CreateKey(send_device, send_device_incarnation,
                                recv_device, tensor_name, FrameAndIter(0, 0));
@@ -123,10 +132,12 @@ void Benchmark::RunWithArgs(
   }
   // Gets inputs' and outputs' rendezvous keys.
   std::vector<std::pair<string, Tensor>> in;
+  in.reserve(inputs.size());
   for (const auto& p : inputs) {
     in.push_back({GetRendezvousKey(p.first), p.second});
   }
   std::vector<string> out;
+  out.reserve(outputs.size());
   for (const auto& n : outputs) {
     out.push_back(GetRendezvousKey(n));
   }
